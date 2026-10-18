@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         default=None,
         description="CA bundle used to verify the Kubernetes API server certificate",
     )
+    cluster_wazuh_agent_ids: str = Field(
+        default="",
+        description="Comma-separated Wazuh agent IDs of the cluster nodes, used for cluster scope",
+    )
     context_builder_host: str = "0.0.0.0"
     context_builder_port: int = 8090
     context_builder_timeout_seconds: float = 10.0
@@ -50,6 +54,11 @@ class Settings(BaseSettings):
                 raise ValueError("TRIVY_API_BEARER_TOKEN_FILE is empty")
             self.trivy_api_bearer_token = token
         return self
+
+    @property
+    def cluster_agent_ids(self) -> list[str]:
+        ids = [part.strip() for part in self.cluster_wazuh_agent_ids.split(",")]
+        return list(dict.fromkeys(i for i in ids if i))
 
     @property
     def trivy_tls_verify(self) -> bool | str:

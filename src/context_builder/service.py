@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from .models import (
-    AssetContext,
     BuiltContext,
     ContextBuildRequest,
     Criticality,
@@ -51,7 +50,7 @@ def _normalized_severity(value: object) -> Severity:
 
 
 def _wazuh_findings(
-    rows: list[dict[str, object]], asset: AssetContext, expected_agent_id: str | None
+    rows: list[dict[str, object]], subject_id: str, expected_agent_id: str | None
 ) -> list[SecurityFinding]:
     findings: list[SecurityFinding] = []
     for row in rows:
@@ -82,12 +81,13 @@ def _wazuh_findings(
             SecurityFinding(
                 source="wazuh",
                 finding_id=(
-                    f"wazuh:{expected_agent_id or asset.asset_id}:{cve}:"
+                    f"wazuh:{expected_agent_id or subject_id}:{cve}:"
                     f"{package.name if package else 'unknown'}:{package_version}"
                 ),
                 severity=_normalized_severity(row.get("severity")),
                 title=_optional_string(row.get("title")),
                 description=_optional_string(row.get("rationale")),
+                target=_optional_string(row.get("agent_name")),
                 cve=cve,
                 package=package,
                 cvss=_optional_float(row.get("cvss")),
@@ -115,12 +115,15 @@ def build_context(
     request: ContextBuildRequest,
     wazuh_rows: list[dict[str, object]],
     trivy_findings: list[TrivyFinding] | None = None,
+    wazuh_agent_rows: dict[str, list[dict[str, object]]] | None = None,
 ) -> BuiltContext:
     findings = (
-        _wazuh_findings(wazuh_rows, request.asset, request.wazuh_agent_id)
+        _wazuh_findings(wazuh_rows, request.asset.asset_id, request.wazuh_agent_id)
         if request.asset is not None
         else []
     )
+    for agent_id, rows in (wazuh_agent_rows or {}).items():
+        findings.extend(_wazuh_findings(rows, agent_id, agent_id))
     request_trivy_findings = [*request.trivy_findings, *(trivy_findings or [])]
     findings.extend(
         SecurityFinding(
@@ -195,11 +198,7 @@ def build_context(
     for finding in findings:
         if finding.cve:
             cves_by_source[finding.source].add(finding.cve.upper())
-    shared_cves = (
-        cves_by_source["wazuh"] & cves_by_source["trivy"]
-        if request.scope == "asset"
-        else set()
-    )
+    shared_cves = cves_by_source["wazuh"] & cves_by_source["trivy"]
     if shared_cves:
         tags.add("cross_source_corroboration")
         if priority in (Priority.MEDIUM, Priority.HIGH):

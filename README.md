@@ -82,8 +82,15 @@ For a cluster-wide Trivy context, do not include an `asset` or
 
 The response has `scope: "cluster"` and `asset: null`. Every Trivy finding
 includes its Kubernetes namespace, report name, and available workload and
-container labels. Cluster-wide Trivy findings are not treated as corroborating
-evidence for an individual Wazuh agent.
+container labels.
+
+Set `CLUSTER_WAZUH_AGENT_IDS` (comma-separated, for example `001,002,003`) to the
+Wazuh agent IDs of the cluster nodes. Cluster scope then also pulls each node
+agent's vulnerabilities from the gateway; those findings carry the agent name as
+their `target`. When Wazuh and Trivy report the same CVE, the context is tagged
+`cross_source_corroboration` and its priority is raised one level (medium and
+high only). With the setting empty, cluster scope is Trivy-only. If the gateway
+fails for any listed agent, the request returns 502 rather than a partial result.
 
 Configure `TRIVY_REPORTS_URL` to the Kubernetes API list endpoint. If the API
 requires authentication, provide a service-account token using

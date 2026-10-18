@@ -1,3 +1,5 @@
+import pytest
+
 from context_builder.models import (
     AssetContext,
     ContextBuildRequest,
@@ -110,3 +112,49 @@ def test_rejects_malformed_wazuh_finding() -> None:
         assert "without a CVE" in str(exc)
     else:
         raise AssertionError("Expected malformed Wazuh finding to be rejected")
+
+
+def test_cluster_scope_merges_node_agent_findings_and_corroborates() -> None:
+    request = ContextBuildRequest(
+        scope="cluster",
+        trivy_findings=[
+            TrivyFinding(vulnerability_id="CVE-2026-1234", severity=Severity.MEDIUM),
+            TrivyFinding(vulnerability_id="CVE-2026-0001", severity=Severity.LOW),
+        ],
+    )
+    context = build_context(
+        request,
+        [],
+        wazuh_agent_rows={
+            "001": [
+                {
+                    "cve": "CVE-2026-1234",
+                    "severity": "Medium",
+                    "agent_id": "001",
+                    "agent_name": "node-kube-001",
+                    "package": {"name": "openssl", "version": "3.0"},
+                }
+            ],
+            "002": [],
+        },
+    )
+
+    wazuh = [f for f in context.findings if f.source == "wazuh"]
+    assert [(f.target, f.finding_id) for f in wazuh] == [
+        ("node-kube-001", "wazuh:001:CVE-2026-1234:openssl:3.0")
+    ]
+    assert context.sources == ["wazuh", "trivy"]
+    assert "cross_source_corroboration" in context.tags
+    assert context.priority is Priority.HIGH
+
+
+def test_cluster_scope_rejects_node_findings_for_a_different_agent() -> None:
+    request = ContextBuildRequest(scope="cluster")
+    with pytest.raises(ValueError, match="different agent"):
+        build_context(
+            request,
+            [],
+            wazuh_agent_rows={
+                "001": [{"cve": "CVE-1", "severity": "High", "agent_id": "002"}]
+            },
+        )

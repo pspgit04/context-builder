@@ -95,8 +95,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Trivy reports API request failed",
                 ) from exc
+        wazuh_agent_rows: dict[str, list[dict[str, object]]] = {}
+        if payload.scope == "cluster":
+            for agent_id in request.app.state.settings.cluster_agent_ids:
+                try:
+                    wazuh_agent_rows[agent_id] = (
+                        await request.app.state.wazuh_gateway.get_agent_vulnerabilities(agent_id)
+                    )
+                except (httpx.HTTPError, ValueError) as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Wazuh gateway request failed",
+                    ) from exc
         try:
-            return build_context(payload, wazuh_rows, trivy_findings)
+            return build_context(payload, wazuh_rows, trivy_findings, wazuh_agent_rows)
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
