@@ -8,3 +8,4 @@ secrets/
 .ruff_cache/
 build/
 dist/
+out.json
