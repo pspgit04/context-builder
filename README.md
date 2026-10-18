@@ -135,6 +135,16 @@ Tokens from `kubectl create token` expire, so rotate before the duration ends.
 These are initial deterministic heuristics, not calibrated risk scores.
 They affect prioritization only and never authorize response actions.
 
+## Known gaps
+
+- **Kubernetes node OS vulnerabilities are not covered.** The Wazuh agents on
+  node-kube-001..003 are installed and reporting, but the nodes run Ubuntu 25.10
+  (an interim release) and the Wazuh scanner logs
+  `OS scan for platform 'ubuntu' on Agent '001' is not supported.` Wazuh
+  therefore produces no findings for them, and `CLUSTER_WAZUH_AGENT_IDS` is left
+  unset. Trivy still covers workloads. Revisit by moving the nodes to an
+  Ubuntu LTS release, or by adding Trivy `rootfs` host scans per node.
+
 ## Tests
 
 ```bash
