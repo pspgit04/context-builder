@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
         httpx.AsyncClient(timeout=settings.context_builder_timeout_seconds) as wazuh_http,
         httpx.AsyncClient(
             timeout=settings.context_builder_timeout_seconds,
-            verify=settings.trivy_api_verify_tls,
+            verify=settings.trivy_tls_verify,
         ) as trivy_http,
     ):
         app.state.wazuh_gateway = WazuhGatewayClient(settings, wazuh_http)

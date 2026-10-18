@@ -87,9 +87,30 @@ evidence for an individual Wazuh agent.
 
 Configure `TRIVY_REPORTS_URL` to the Kubernetes API list endpoint. If the API
 requires authentication, provide a service-account token using
-`TRIVY_API_BEARER_TOKEN`; bearer tokens are only sent to HTTPS endpoints. TLS
-certificate verification is enabled by default; install the cluster CA rather
-than disabling verification in production.
+`TRIVY_API_BEARER_TOKEN` or `TRIVY_API_BEARER_TOKEN_FILE`; bearer tokens are
+only sent to HTTPS endpoints. TLS certificate verification is enabled by
+default; set `TRIVY_API_CA_FILE` to the cluster CA bundle rather than disabling
+verification in production.
+
+### Read-only service account
+
+Create the account on a machine with cluster access:
+
+```bash
+kubectl create namespace context-builder
+kubectl create serviceaccount context-builder -n context-builder
+kubectl create clusterrole trivy-reports-reader \
+  --verb=get,list --resource=vulnerabilityreports.aquasecurity.github.io
+kubectl create clusterrolebinding context-builder-trivy-reader \
+  --clusterrole=trivy-reports-reader \
+  --serviceaccount=context-builder:context-builder
+kubectl create token context-builder -n context-builder --duration=8760h > trivy-token
+kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+  | base64 -d > cluster-ca.crt
+```
+
+Copy both files to `secrets/` (mode 600) and point the `.env` settings at them.
+Tokens from `kubectl create token` expire, so rotate before the duration ends.
 
 ## Initial priority rules
 

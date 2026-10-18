@@ -10,9 +10,11 @@ from context_builder.main import create_app
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
+        _env_file=None,
         wazuh_gateway_url="https://gateway.test",
         wazuh_gateway_internal_token="wazuh-secret",
         context_builder_internal_token="builder-secret",
+        trivy_reports_url=None,
     )
 
 
@@ -212,8 +214,40 @@ def test_cluster_scope_requires_configured_trivy_api(settings: Settings) -> None
     assert response.json()["detail"] == "Trivy reports API is not configured"
 
 
+def test_token_file_and_ca_file_settings(tmp_path) -> None:
+    token_file = tmp_path / "token"
+    token_file.write_text("file-token\n")
+    ca_file = tmp_path / "ca.crt"
+    settings = Settings(
+        _env_file=None,
+        wazuh_gateway_url="https://gateway.test",
+        wazuh_gateway_internal_token="wazuh-secret",
+        context_builder_internal_token="builder-secret",
+        trivy_api_bearer_token_file=token_file,
+        trivy_api_ca_file=ca_file,
+    )
+
+    assert settings.trivy_api_bearer_token == "file-token"
+    assert settings.trivy_tls_verify == str(ca_file)
+
+
+def test_empty_token_file_is_rejected(tmp_path) -> None:
+    token_file = tmp_path / "token"
+    token_file.write_text("\n")
+
+    with pytest.raises(ValueError, match="TRIVY_API_BEARER_TOKEN_FILE is empty"):
+        Settings(
+            _env_file=None,
+            wazuh_gateway_url="https://gateway.test",
+            wazuh_gateway_internal_token="wazuh-secret",
+            context_builder_internal_token="builder-secret",
+            trivy_api_bearer_token_file=token_file,
+        )
+
+
 def test_cluster_bearer_token_requires_https() -> None:
     settings = Settings(
+        _env_file=None,
         wazuh_gateway_url="https://gateway.test",
         wazuh_gateway_internal_token="wazuh-secret",
         context_builder_internal_token="builder-secret",
