@@ -14,6 +14,7 @@ from .models import (
     SecurityFinding,
     Severity,
     TrivyFinding,
+    WazuhAgent,
 )
 
 _SEVERITY_RANK = {
@@ -85,6 +86,7 @@ def _wazuh_findings(
                     f"{package.name if package else 'unknown'}:{package_version}"
                 ),
                 severity=_normalized_severity(row.get("severity")),
+                agent_id=str(agent_id) if agent_id is not None else expected_agent_id,
                 title=_optional_string(row.get("title")),
                 description=_optional_string(row.get("rationale")),
                 target=_optional_string(row.get("agent_name")),
@@ -116,6 +118,7 @@ def build_context(
     wazuh_rows: list[dict[str, object]],
     trivy_findings: list[TrivyFinding] | None = None,
     wazuh_agent_rows: dict[str, list[dict[str, object]]] | None = None,
+    wazuh_agents: list[WazuhAgent] | None = None,
 ) -> BuiltContext:
     findings = (
         _wazuh_findings(wazuh_rows, request.asset.asset_id, request.wazuh_agent_id)
@@ -237,6 +240,7 @@ def build_context(
         generated_at=datetime.now(UTC),
         scope=request.scope,
         asset=request.asset,
+        wazuh_agents=wazuh_agents or [],
         priority=priority,
         rules_applied=rules,
         tags=sorted(tags),

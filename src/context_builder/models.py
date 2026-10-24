@@ -39,6 +39,27 @@ class PackageContext(BaseModel):
     fixed_version: str | None = None
 
 
+class WazuhAgentVulnerabilityCounts(BaseModel):
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+    info: int = 0
+
+
+class WazuhAgent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    name: str
+    ip: str | None = None
+    status: str
+    last_keepalive: datetime | None = None
+    vulnerability_counts: WazuhAgentVulnerabilityCounts = Field(
+        default_factory=WazuhAgentVulnerabilityCounts
+    )
+
+
 class TrivyReportResource(BaseModel):
     namespace: str | None = None
     report_name: str
@@ -99,6 +120,7 @@ class SecurityFinding(BaseModel):
     source: Literal["wazuh", "trivy"]
     finding_id: str
     kind: Literal["vulnerability"] = "vulnerability"
+    agent_id: str | None = None
     severity: Severity
     title: str | None = None
     description: str | None = None
@@ -121,6 +143,7 @@ class BuiltContext(BaseModel):
     generated_at: datetime
     scope: Literal["asset", "cluster"]
     asset: AssetContext | None = None
+    wazuh_agents: list[WazuhAgent] = Field(default_factory=list)
     priority: Priority
     rules_applied: list[PriorityRule]
     tags: list[str]

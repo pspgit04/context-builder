@@ -51,6 +51,7 @@ def test_build_route_fetches_wazuh_and_accepts_normalized_trivy(settings: Settin
     assert route.called
     assert response.status_code == 200
     assert response.json()["finding_count"] == 2
+    assert response.json()["findings"][0]["agent_id"] == "001"
     assert response.json()["priority"] == "critical"
     assert "cross_source_corroboration" in response.json()["tags"]
 
@@ -161,6 +162,11 @@ def test_cluster_context_pages_trivy_reports_and_preserves_resource_metadata() -
         },
     }
     with respx.mock(assert_all_called=True) as mock:
+        mock.get(
+            "https://gateway.test/v1/agents",
+            params={"status": "active", "limit": 2000},
+            headers={"X-Internal-Token": "wazuh-secret"},
+        ).respond(200, json={"total": 0, "items": []})
         route = mock.get(
             url,
             headers={"Authorization": "Bearer trivy-secret"},
@@ -187,6 +193,7 @@ def test_cluster_context_pages_trivy_reports_and_preserves_resource_metadata() -
     assert body["asset"] is None
     assert body["finding_count"] == 2
     assert body["priority"] == "critical"
+    assert body["wazuh_agents"] == []
     assert body["findings"][0]["resource"] == {
         "namespace": "production",
         "report_name": "deployment-a-container",
@@ -223,6 +230,25 @@ def test_cluster_scope_includes_configured_wazuh_node_agents() -> None:
         mock.get("https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports").respond(
             200, json={"metadata": {"continue": ""}, "items": [report]}
         )
+        mock.get(
+            "https://gateway.test/v1/agents",
+            params={"status": "active", "limit": 2000},
+            headers={"X-Internal-Token": "wazuh-secret"},
+        ).respond(
+            200,
+            json={
+                "total": 1,
+                "items": [
+                    {
+                        "id": "001",
+                        "name": "node-kube-001",
+                        "ip": "10.10.4.7",
+                        "status": "active",
+                        "vulnerability_counts": {"medium": 1},
+                    }
+                ],
+            },
+        )
         node1 = mock.get(
             "https://gateway.test/v1/agents/001/vulnerabilities",
             headers={"X-Internal-Token": "wazuh-secret"},
@@ -250,8 +276,63 @@ def test_cluster_scope_includes_configured_wazuh_node_agents() -> None:
     body = response.json()
     assert response.status_code == 200
     assert body["sources"] == ["wazuh", "trivy"]
+    assert body["wazuh_agents"][0]["id"] == "001"
+    assert body["wazuh_agents"][0]["vulnerability_counts"]["medium"] == 1
+    wazuh_finding = next(item for item in body["findings"] if item["source"] == "wazuh")
+    assert wazuh_finding["agent_id"] == "001"
     assert "cross_source_corroboration" in body["tags"]
     assert body["priority"] == "high"
+
+
+def test_cluster_context_fetches_vulnerabilities_for_active_agents_by_default() -> None:
+    settings = Settings(
+        _env_file=None,
+        wazuh_gateway_url="https://gateway.test",
+        wazuh_gateway_internal_token="wazuh-secret",
+        context_builder_internal_token="builder-secret",
+        trivy_reports_url="https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports",
+    )
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports").respond(
+            200, json={"metadata": {"continue": ""}, "items": []}
+        )
+        mock.get(
+            "https://gateway.test/v1/agents",
+            params={"status": "active", "limit": 2000},
+            headers={"X-Internal-Token": "wazuh-secret"},
+        ).respond(
+            200,
+            json={
+                "total": 1,
+                "items": [{"id": "001", "name": "node-kube-001", "status": "active"}],
+            },
+        )
+        mock.get(
+            "https://gateway.test/v1/agents/001/vulnerabilities",
+            headers={"X-Internal-Token": "wazuh-secret"},
+        ).respond(
+            200,
+            json=[
+                {
+                    "cve": "CVE-2026-1234",
+                    "severity": "high",
+                    "agent_id": "001",
+                    "agent_name": "node-kube-001",
+                }
+            ],
+        )
+        with TestClient(create_app(settings)) as client:
+            response = client.post(
+                "/v1/context/build",
+                headers={"X-Internal-Token": "builder-secret"},
+                json={"scope": "cluster"},
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sources"] == ["wazuh"]
+    assert body["wazuh_agents"][0]["id"] == "001"
+    assert body["findings"][0]["agent_id"] == "001"
 
 
 def test_cluster_scope_wazuh_failure_returns_gateway_error() -> None:
@@ -267,6 +348,10 @@ def test_cluster_scope_wazuh_failure_returns_gateway_error() -> None:
         mock.get("https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports").respond(
             200, json={"metadata": {"continue": ""}, "items": []}
         )
+        mock.get(
+            "https://gateway.test/v1/agents",
+            params={"status": "active", "limit": 2000},
+        ).respond(200, json={"total": 0, "items": []})
         mock.get("https://gateway.test/v1/agents/001/vulnerabilities").respond(503)
         with TestClient(create_app(settings)) as client:
             response = client.post(

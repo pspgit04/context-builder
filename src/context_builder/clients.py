@@ -5,13 +5,28 @@ from typing import Any
 import httpx
 
 from .config import Settings
-from .models import PackageContext, Severity, TrivyFinding, TrivyReportResource
+from .models import PackageContext, Severity, TrivyFinding, TrivyReportResource, WazuhAgent
 
 
 class WazuhGatewayClient:
     def __init__(self, settings: Settings, http_client: httpx.AsyncClient) -> None:
         self._settings = settings
         self._http_client = http_client
+
+    async def list_agents(self) -> list[WazuhAgent]:
+        url = f"{str(self._settings.wazuh_gateway_url).rstrip('/')}/v1/agents"
+        response = await self._http_client.get(
+            url,
+            params={"status": "active", "limit": 2000},
+            headers={"X-Internal-Token": self._settings.wazuh_gateway_internal_token},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise ValueError("Wazuh gateway returned a malformed agent list")
+        if not all(isinstance(item, dict) for item in payload["items"]):
+            raise ValueError("Wazuh gateway returned a malformed agent list")
+        return [WazuhAgent.model_validate(item) for item in payload["items"]]
 
     async def get_agent_vulnerabilities(self, agent_id: str) -> list[dict[str, Any]]:
         url = (
