@@ -101,9 +101,11 @@ rather than a partial result.
 Configure `TRIVY_REPORTS_URL` to the Kubernetes API list endpoint. If the API
 requires authentication, provide a service-account token using
 `TRIVY_API_BEARER_TOKEN` or `TRIVY_API_BEARER_TOKEN_FILE`; bearer tokens are
-only sent to HTTPS endpoints. TLS certificate verification is enabled by
-default; set `TRIVY_API_CA_FILE` to the cluster CA bundle rather than disabling
-verification in production.
+only sent to HTTPS endpoints. The token file is re-read on every request, so a
+rotated token is picked up without a restart. TLS certificate verification is
+enabled by default; set `TRIVY_API_CA_FILE` to the cluster CA bundle rather than
+disabling verification in production. To run in Kubernetes, see
+[docs/USAGE.md](docs/USAGE.md#5-deploy-to-kubernetes).
 
 ### Read-only service account
 

@@ -217,17 +217,19 @@ class TrivyOperatorClient:
         if settings.trivy_reports_url is None:
             raise ValueError("TRIVY_REPORTS_URL is required for cluster context")
         if (
-            settings.trivy_api_bearer_token
-            and settings.trivy_reports_url.scheme != "https"
-        ):
+            settings.trivy_api_bearer_token or settings.trivy_api_bearer_token_file
+        ) and settings.trivy_reports_url.scheme != "https":
             raise ValueError("TRIVY_REPORTS_URL must use HTTPS when a bearer token is configured")
         self._url = str(settings.trivy_reports_url)
         self._http_client = http_client
-        self._headers = (
-            {"Authorization": f"Bearer {settings.trivy_api_bearer_token}"}
-            if settings.trivy_api_bearer_token
-            else {}
-        )
+        self._settings = settings
+
+    def _auth_headers(self) -> dict[str, str]:
+        try:
+            token = self._settings.read_trivy_bearer_token()
+        except OSError as exc:
+            raise ValueError("TRIVY_API_BEARER_TOKEN_FILE could not be read") from exc
+        return {"Authorization": f"Bearer {token}"} if token else {}
 
     async def list_findings(self) -> list[TrivyFinding]:
         findings: list[TrivyFinding] = []
@@ -241,7 +243,7 @@ class TrivyOperatorClient:
             response = await self._http_client.get(
                 self._url,
                 params=params,
-                headers=self._headers,
+                headers=self._auth_headers(),
             )
             response.raise_for_status()
             payload = response.json()

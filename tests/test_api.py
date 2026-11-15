@@ -5,6 +5,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from context_builder.clients import TrivyOperatorClient
 from context_builder.config import Settings
 from context_builder.main import create_app
 
@@ -460,8 +461,36 @@ def test_token_file_and_ca_file_settings(tmp_path) -> None:
         trivy_api_ca_file=ca_file,
     )
 
-    assert settings.trivy_api_bearer_token == "file-token"
+    assert settings.read_trivy_bearer_token() == "file-token"
     assert settings.trivy_tls_verify == str(ca_file)
+
+
+async def test_token_file_is_reread_on_each_trivy_request(tmp_path) -> None:
+    token_file = tmp_path / "token"
+    token_file.write_text("token-1\n")
+    url = "https://trivy.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports"
+    settings = Settings(
+        _env_file=None,
+        wazuh_gateway_url="https://gateway.test",
+        wazuh_gateway_internal_token="wazuh-secret",
+        context_builder_internal_token="builder-secret",
+        trivy_reports_url=url,
+        trivy_api_bearer_token_file=token_file,
+    )
+    empty_list = httpx.Response(200, json={"metadata": {"continue": ""}, "items": []})
+
+    with respx.mock() as mock:
+        route = mock.get(url).mock(return_value=empty_list)
+        async with httpx.AsyncClient() as http_client:
+            trivy = TrivyOperatorClient(settings, http_client)
+            await trivy.list_findings()
+            token_file.write_text("token-2\n")
+            await trivy.list_findings()
+
+    assert [call.request.headers["Authorization"] for call in route.calls] == [
+        "Bearer token-1",
+        "Bearer token-2",
+    ]
 
 
 def test_empty_token_file_is_rejected(tmp_path) -> None:

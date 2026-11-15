@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: context-builder-config
+  namespace: context-builder
+data:
+  WAZUH_GATEWAY_URL: "http://wazuh-vm-gateway.wazuh-gateway.svc:8080"
+  # In-cluster Kubernetes API; the pod's service-account token and CA are mounted automatically.
+  TRIVY_REPORTS_URL: "https://kubernetes.default.svc/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports"
+  TRIVY_API_BEARER_TOKEN_FILE: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  TRIVY_API_CA_FILE: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+  TRIVY_API_VERIFY_TLS: "true"
+  CLUSTER_WAZUH_AGENT_IDS: ""
+  CONTEXT_BUILDER_HOST: "0.0.0.0"
+  CONTEXT_BUILDER_PORT: "8090"
+  CONTEXT_BUILDER_TIMEOUT_SECONDS: "10.0"
+  # Ollama triage is optional. To enable it, run Ollama separately and set the URL to its Service.
+  LLM_TRIAGE_ENABLED: "false"
+  LLM_TRIAGE_URL: "http://ollama.context-builder.svc:11434/api/chat"
+  LLM_TRIAGE_MODEL: "qwen2.5:3b"
+  LLM_TRIAGE_TIMEOUT_SECONDS: "300.0"
+  LLM_TRIAGE_NUM_CTX: "8192"

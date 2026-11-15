@@ -93,7 +93,49 @@ copied into the image. Mount the token and CA files (for example
 `TRIVY_API_CA_FILE` at the mounted paths. LLM triage stays disabled unless
 `LLM_TRIAGE_ENABLED=true` and `LLM_TRIAGE_URL` points to a reachable Ollama.
 
-## 5. API
+## 5. Deploy to Kubernetes
+
+Manifests are in [`k8s/`](../k8s) and follow the `wazuh-vm-gateway` conventions
+(local image, `imagePullPolicy: Never`, non-root, read-only root filesystem,
+all capabilities dropped).
+
+```bash
+# 1. Make the image available to the cluster runtime (same as the gateway)
+podman build -t localhost/context-builder:latest .
+
+# 2. Namespace first, then the secret (the template is not in kustomization.yaml)
+kubectl apply -f k8s/namespace.yaml
+kubectl -n context-builder create secret generic context-builder-secrets \
+  --from-literal=WAZUH_GATEWAY_INTERNAL_TOKEN='<gateway token>' \
+  --from-literal=CONTEXT_BUILDER_INTERNAL_TOKEN="$(openssl rand -hex 32)"
+
+# 3. Everything else: ServiceAccount, RBAC, ConfigMap, Deployment, Service
+kubectl apply -k k8s/
+kubectl -n context-builder rollout status deploy/context-builder
+```
+
+In the cluster the service authenticates to the Kubernetes API with its own
+service account, so no `kubectl create token` and no `secrets/` files are
+needed. The ConfigMap points `TRIVY_API_BEARER_TOKEN_FILE` and
+`TRIVY_API_CA_FILE` at the pod's mounted service-account files. The token file
+is re-read on every Trivy request, so kubelet token rotation is picked up
+without a restart. The ClusterRole grants only `get` and `list` on
+`vulnerabilityreports`.
+
+Review `k8s/configmap.yaml` before applying: `WAZUH_GATEWAY_URL` defaults to the
+in-cluster gateway Service, and `CLUSTER_WAZUH_AGENT_IDS` is empty (all active
+agents). `LLM_TRIAGE_ENABLED` is `false`; Ollama is not deployed.
+
+Test it from your workstation:
+
+```bash
+kubectl -n context-builder port-forward svc/context-builder 8090:8090
+curl -s -X POST localhost:8090/v1/context/build \
+  -H "X-Internal-Token: <CONTEXT_BUILDER_INTERNAL_TOKEN>" \
+  -H "Content-Type: application/json" -d '{"scope":"cluster"}'
+```
+
+## 6. API
 
 ### `POST /v1/context/build`
 
@@ -190,7 +232,7 @@ scores, and never authorize response actions.
 | 502 | Wazuh gateway, Trivy API, or LLM request failed, or upstream returned malformed data. Cluster scope fails entirely if any selected Wazuh agent fails |
 | 503 | Cluster scope requested but `TRIVY_REPORTS_URL` is not configured |
 
-## 6. Optional LLM triage
+## 7. Optional LLM triage
 
 ```bash
 ollama serve &                 # if not already running
@@ -223,14 +265,14 @@ Notes:
   source of truth.
 - A failed LLM call currently returns `502` for the whole request.
 
-## 7. Tests
+## 8. Tests
 
 ```bash
 source .venv/bin/activate
 pytest -q
 ```
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Check |
 |---|---|

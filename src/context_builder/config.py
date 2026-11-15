@@ -52,13 +52,21 @@ class Settings(BaseSettings):
 
 
     @model_validator(mode="after")
-    def _load_token_file(self) -> "Settings":
-        if not self.trivy_api_bearer_token and self.trivy_api_bearer_token_file:
+    def _validate_token_file(self) -> "Settings":
+        # Fail fast at startup; the token itself is re-read per request.
+        self.read_trivy_bearer_token()
+        return self
+
+    def read_trivy_bearer_token(self) -> str | None:
+        """Return the static token, or read the token file so rotated tokens are picked up."""
+        if self.trivy_api_bearer_token:
+            return self.trivy_api_bearer_token
+        if self.trivy_api_bearer_token_file:
             token = self.trivy_api_bearer_token_file.read_text(encoding="utf-8").strip()
             if not token:
                 raise ValueError("TRIVY_API_BEARER_TOKEN_FILE is empty")
-            self.trivy_api_bearer_token = token
-        return self
+            return token
+        return None
 
     @property
     def cluster_agent_ids(self) -> list[str]:
