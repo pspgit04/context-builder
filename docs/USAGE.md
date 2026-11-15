@@ -79,6 +79,20 @@ curl http://localhost:8090/healthz
 
 Interactive API docs are served at `http://localhost:8090/docs`.
 
+### Run as a container
+
+```bash
+podman build -t localhost/context-builder:latest .     # or: docker build ...
+podman run --rm -p 8090:8090 --env-file .env localhost/context-builder:latest
+```
+
+The image runs as non-root (uid 65534) and listens on `8090`. Configuration
+is passed only through environment variables; `.env` and `secrets/` are not
+copied into the image. Mount the token and CA files (for example
+`-v $PWD/secrets:/secrets:ro`) and point `TRIVY_API_BEARER_TOKEN_FILE` and
+`TRIVY_API_CA_FILE` at the mounted paths. LLM triage stays disabled unless
+`LLM_TRIAGE_ENABLED=true` and `LLM_TRIAGE_URL` points to a reachable Ollama.
+
 ## 5. API
 
 ### `POST /v1/context/build`

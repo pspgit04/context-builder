@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+secrets/
+out.json
+tests/
+docs/
+k8s/
+**/__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
