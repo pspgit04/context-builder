@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -333,6 +335,76 @@ def test_cluster_context_fetches_vulnerabilities_for_active_agents_by_default() 
     assert body["sources"] == ["wazuh"]
     assert body["wazuh_agents"][0]["id"] == "001"
     assert body["findings"][0]["agent_id"] == "001"
+
+
+def test_cluster_context_adds_advisory_ollama_triage() -> None:
+    settings = Settings(
+        _env_file=None,
+        wazuh_gateway_url="https://gateway.test",
+        wazuh_gateway_internal_token="wazuh-secret",
+        context_builder_internal_token="builder-secret",
+        trivy_reports_url="https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports",
+        llm_triage_enabled=True,
+        llm_triage_url="http://ollama.test/api/chat",
+        llm_triage_model="test-model",
+    )
+    triage = {
+        "summary": "Review the critical package findings.",
+        "key_observations": ["A critical finding is present."],
+        "recommended_actions": ["Review the affected package and plan a patch."],
+        "supporting_finding_ids": ["trivy:ns:report:CVE-2026-1:openssl:1.0"],
+    }
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://kube.test/apis/aquasecurity.github.io/v1alpha1/vulnerabilityreports").respond(
+            200,
+            json={
+                "metadata": {"continue": ""},
+                "items": [
+                    {
+                        "metadata": {"name": "report", "namespace": "ns"},
+                        "report": {
+                            "vulnerabilities": [
+                                {
+                                    "vulnerabilityID": "CVE-2026-1",
+                                    "severity": "CRITICAL",
+                                    "resource": "openssl",
+                                    "installedVersion": "1.0",
+                                }
+                            ]
+                        },
+                    }
+                ],
+            },
+        )
+        mock.get(
+            "https://gateway.test/v1/agents",
+            params={"status": "active", "limit": 2000},
+            headers={"X-Internal-Token": "wazuh-secret"},
+        ).respond(200, json={"total": 0, "items": []})
+        ollama = mock.post("http://ollama.test/api/chat").respond(
+            200,
+            json={"message": {"content": json.dumps(triage)}},
+        )
+        with TestClient(create_app(settings)) as client:
+            response = client.post(
+                "/v1/context/build",
+                headers={"X-Internal-Token": "builder-secret"},
+                json={"scope": "cluster"},
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert ollama.called
+    request_payload = json.loads(ollama.calls[0].request.content)
+    assert request_payload["options"] == {
+        "temperature": 0,
+        "num_ctx": 8192,
+        "num_predict": 512,
+    }
+    assert request_payload["format"]["properties"]["recommended_actions"]["maxItems"] == 3
+    assert request_payload["format"]["properties"]["supporting_finding_ids"]["maxItems"] == 5
+    assert body["priority"] == "critical"
+    assert body["triage"] == triage
 
 
 def test_cluster_scope_wazuh_failure_returns_gateway_error() -> None:

@@ -138,6 +138,18 @@ Tokens from `kubectl create token` expire, so rotate before the duration ends.
 These are initial deterministic heuristics, not calibrated risk scores.
 They affect prioritization only and never authorize response actions.
 
+## Optional local LLM triage
+
+Set `LLM_TRIAGE_ENABLED=true` after starting Ollama and pulling the configured
+model (`ollama pull qwen2.5:3b` by default). The triage result contains a short
+summary, key observations, advisory recommendations, and references to supplied
+finding IDs. The request sends aggregate counts, Wazuh agent inventory, and up
+to 8 highest-severity findings per source (titles truncated to 120 characters)
+to the configured local Ollama chat endpoint. On CPU-only hosts prompt
+processing is slow (about 30 tokens/s on 5 cores), so tune
+`LLM_TRIAGE_NUM_CTX` and `LLM_TRIAGE_TIMEOUT_SECONDS` accordingly. LLM output does not alter deterministic priority or execute actions.
+When disabled, `triage` is `null` and context building works as before.
+
 ## Known gaps
 
 - **Kubernetes node OS vulnerabilities are not covered.** The Wazuh agents on

@@ -7,7 +7,7 @@ import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
-from .clients import TrivyOperatorClient, WazuhGatewayClient
+from .clients import OllamaTriageClient, TrivyOperatorClient, WazuhGatewayClient
 from .config import Settings, get_settings
 from .models import BuiltContext, ContextBuildRequest
 from .service import build_context
@@ -22,8 +22,12 @@ async def lifespan(app: FastAPI):
             timeout=settings.context_builder_timeout_seconds,
             verify=settings.trivy_tls_verify,
         ) as trivy_http,
+        httpx.AsyncClient(timeout=settings.llm_triage_timeout_seconds) as llm_http,
     ):
         app.state.wazuh_gateway = WazuhGatewayClient(settings, wazuh_http)
+        app.state.llm_triage = (
+            OllamaTriageClient(settings, llm_http) if settings.llm_triage_enabled else None
+        )
         app.state.trivy_operator = (
             TrivyOperatorClient(settings, trivy_http)
             if settings.trivy_reports_url is not None
@@ -119,7 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         detail="Wazuh gateway request failed",
                     ) from exc
         try:
-            return build_context(
+            context = build_context(
                 payload,
                 wazuh_rows,
                 trivy_findings,
@@ -131,6 +135,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Upstream returned invalid vulnerability data",
             ) from exc
+        triage_client = request.app.state.llm_triage
+        if triage_client is not None:
+            try:
+                context.triage = await triage_client.assess(context)
+            except (httpx.HTTPError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="LLM triage request failed",
+                ) from exc
+        return context
 
     return app
 

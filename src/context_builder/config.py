@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     context_builder_host: str = "0.0.0.0"
     context_builder_port: int = 8090
     context_builder_timeout_seconds: float = 10.0
+    llm_triage_enabled: bool = False
+    llm_triage_url: str = "http://127.0.0.1:11434/api/chat"
+    llm_triage_model: str = "qwen2.5:3b"
+    llm_triage_timeout_seconds: float = 300.0
+    llm_triage_num_ctx: int = 8192
 
 
     @model_validator(mode="after")

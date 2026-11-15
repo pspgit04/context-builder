@@ -138,6 +138,13 @@ class PriorityRule(BaseModel):
     effect: Literal["baseline", "elevated"]
 
 
+class TriageAssessment(BaseModel):
+    summary: str = Field(min_length=1, max_length=2000)
+    key_observations: list[str] = Field(default_factory=list, max_length=8)
+    recommended_actions: list[str] = Field(default_factory=list, max_length=8)
+    supporting_finding_ids: list[str] = Field(default_factory=list, max_length=30)
+
+
 class BuiltContext(BaseModel):
     context_id: UUID
     generated_at: datetime
@@ -151,6 +158,7 @@ class BuiltContext(BaseModel):
     finding_count: int
     sources: list[Literal["wazuh", "trivy"]]
     analyst_summary: str
+    triage: TriageAssessment | None = None
 
     @model_validator(mode="after")
     def finding_count_matches(self) -> BuiltContext:
