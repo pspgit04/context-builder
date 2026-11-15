@@ -6,6 +6,8 @@ Trivy remain the detection/data sources; this service correlates findings and
 applies deterministic priority rules. It does not call an LLM or trigger
 remediation.
 
+See [docs/USAGE.md](docs/USAGE.md) for a step-by-step usage guide.
+
 ## Current integration boundary
 
 - Wazuh is queried through the existing gateway endpoint
