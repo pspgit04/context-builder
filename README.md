@@ -6,7 +6,8 @@ Trivy remain the detection/data sources; this service correlates findings and
 applies deterministic priority rules. It does not call an LLM or trigger
 remediation.
 
-See [docs/USAGE.md](docs/USAGE.md) for a step-by-step usage guide.
+See [docs/USAGE.md](docs/USAGE.md) for a step-by-step usage guide and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for architecture diagrams.
 
 ## Current integration boundary
 
